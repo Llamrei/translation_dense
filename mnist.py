@@ -1,3 +1,7 @@
+"""
+Uses code from https://www.tensorflow.org/datasets/keras_example
+"""
+
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
