@@ -5,10 +5,22 @@ Uses code from https://www.tensorflow.org/datasets/keras_example
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
+import csv
 from datetime import timedelta, datetime
+import io
+import os
+import sys
+from pathlib import Path
 
 from trans_dense import tDense
+from trans_dense import Timer
 
+try:
+    OUTPUT_DIR = Path(sys.argv[1])
+except IndexError:
+    OUTPUT_DIR = Path('.')
+
+VERBOSITY = 0
 
 (ds_train, ds_test), ds_info = tfds.load(
     'mnist',
@@ -35,54 +47,52 @@ ds_test = ds_test.batch(128)
 ds_test = ds_test.cache()
 ds_test = ds_test.prefetch(tf.data.experimental.AUTOTUNE)
 
-start = datetime.now()
+dense_types = {
+    'trad' : (tf.keras.layers.Dense, True),
+    'trans_wout_bias'  : (tDense, False),
+    'trans_w_bias' : (tDense, True)
+}
+results = []
+for name, (dense, use_bias) in dense_types.items():
+    print(f"Training with {name}")
+    model = None
+    res = dict()
+    res['dense_type'] = name
+    with Timer() as t:
+        model = tf.keras.models.Sequential([
+            tf.keras.layers.Flatten(input_shape=(28, 28)),
+            dense(128,activation='relu'),
+            tf.keras.layers.Dense(10, use_bias=use_bias)
+        ])
 
-trad_model = tf.keras.models.Sequential([
-  tf.keras.layers.Flatten(input_shape=(28, 28)),
-  tf.keras.layers.Dense(128,activation='relu'),
-  tf.keras.layers.Dense(10)
-])
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(0.001),
+            loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+            metrics=[tf.keras.metrics.SparseCategoricalAccuracy()],
+        )
 
-trad_model.compile(
-    optimizer=tf.keras.optimizers.Adam(0.001),
-    loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-    metrics=[tf.keras.metrics.SparseCategoricalAccuracy()],
-)
+        t.start("training")
+        model.fit(
+            ds_train,
+            epochs=6,
+            validation_data=ds_test,
+            verbose=VERBOSITY
+        )
+    res = {**res, **t.timing}
+    res['val_loss'], res['val_acc'] = model.evaluate(ds_test, verbose=VERBOSITY)
+    results.append(res)
+print(results)
 
-trad_model.fit(
-    ds_train,
-    epochs=6,
-    validation_data=ds_test,
-    verbose=0
-)
-timing = dict()
-timing['trad'] = datetime.now() - start
-timing['trad'] = timing['trad'] / timedelta(microseconds=1)
+OUTPUT_DIR = OUTPUT_DIR/'mnist'
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+path = Path(OUTPUT_DIR/'results.txt')
+if not path.exists():
+    # Use of io open to ensure atomic writing
+    with io.open(OUTPUT_DIR/'results.txt', 'w') as f:
+        writer = csv.DictWriter(f, fieldnames=results[0].keys())
+        writer.writeheader()
 
-res = dict()
-
-res['trad'] = trad_model.evaluate(ds_test, verbose=0)
-
-start = datetime.now()
-trans_model = tf.keras.models.Sequential([
-  tf.keras.layers.Flatten(input_shape=(28, 28)),
-  tDense(130,activation='relu'),
-  tf.keras.layers.Dense(10, use_bias=False)
-])
-
-trans_model.compile(
-    optimizer=tf.keras.optimizers.Adam(0.001),
-    loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-    metrics=[tf.keras.metrics.SparseCategoricalAccuracy()],
-)
-
-trans_model.fit(
-    ds_train,
-    epochs=6,
-    validation_data=ds_test,
-    verbose=0
-)
-timing['trans'] = datetime.now() - start
-timing['trans'] = timing['trans'] / timedelta(microseconds=1)
-
-res['trans'] = trans_model.evaluate(ds_test, verbose=0)
+with io.open(path, 'a') as f:
+    writer = csv.DictWriter(f, fieldnames=results[0].keys())
+    for res in results:
+        writer.writerow(res)
