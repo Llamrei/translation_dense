@@ -2,6 +2,7 @@
 Uses code from https://www.tensorflow.org/datasets/keras_example
 """
 
+from trans_dense.trans_dense import extraDense
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
@@ -13,6 +14,7 @@ import sys
 from pathlib import Path
 
 from trans_dense import tDense
+from trans_dense import polyDense
 from trans_dense import Timer
 
 try:
@@ -50,7 +52,11 @@ ds_test = ds_test.prefetch(tf.data.experimental.AUTOTUNE)
 dense_types = {
     'trad' : (tf.keras.layers.Dense, True),
     'trans_wout_bias'  : (tDense, False),
-    'trans_w_bias' : (tDense, True)
+    'trans_w_bias' : (tDense, True),
+    'poly_dense_w_bias' : (polyDense, True),
+    'poly_dense_wout_bias' : (polyDense, False),
+    'extra_dense_w_bias' : (extraDense, True),
+    'extra_dense_wout_bias' : (extraDense, False)
 }
 results = []
 for name, (dense, use_bias) in dense_types.items():
